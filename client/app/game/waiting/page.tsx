@@ -148,36 +148,41 @@ export default function WaitingPage() {
     initUnicornStudio();
 
     // Add CSS to hide branding elements and crop canvas
-    style = document.createElement("style");
-    style.textContent = `
-      [data-us-project] {
-        position: relative !important;
-        overflow: hidden !important;
-      }
-      
-      [data-us-project] canvas {
-        clip-path: inset(0 0 10% 0) !important;
-      }
-      
-      [data-us-project] * {
-        pointer-events: none !important;
-      }
-      [data-us-project] a[href*="unicorn"],
-      [data-us-project] button[title*="unicorn"],
-      [data-us-project] div[title*="Made with"],
-      [data-us-project] .unicorn-brand,
-      [data-us-project] [class*="brand"],
-      [data-us-project] [class*="credit"],
-      [data-us-project] [class*="watermark"] {
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-        position: absolute !important;
-        left: -9999px !important;
-        top: -9999px !important;
-      }
-    `;
-    document.head.appendChild(style);
+    // Only add if it doesn't already exist
+    const existingStyle = document.querySelector('style[data-unicorn-studio-style]');
+    if (!existingStyle) {
+      style = document.createElement("style");
+      style.setAttribute('data-unicorn-studio-style', 'true');
+      style.textContent = `
+        [data-us-project] {
+          position: relative !important;
+          overflow: hidden !important;
+        }
+        
+        [data-us-project] canvas {
+          clip-path: inset(0 0 10% 0) !important;
+        }
+        
+        [data-us-project] * {
+          pointer-events: none !important;
+        }
+        [data-us-project] a[href*="unicorn"],
+        [data-us-project] button[title*="unicorn"],
+        [data-us-project] div[title*="Made with"],
+        [data-us-project] .unicorn-brand,
+        [data-us-project] [class*="brand"],
+        [data-us-project] [class*="credit"],
+        [data-us-project] [class*="watermark"] {
+          display: none !important;
+          visibility: hidden !important;
+          opacity: 0 !important;
+          position: absolute !important;
+          left: -9999px !important;
+          top: -9999px !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
 
     const hideBranding = () => {
       const projectDiv = document.querySelector("[data-us-project]");
@@ -235,12 +240,12 @@ export default function WaitingPage() {
       clearTimeout(minTimeout);
       clearTimeout(maxTimeout);
       window.removeEventListener('unicornstudio-loaded', handleUnicornLoad);
-      if (embedScript && document.head.contains(embedScript)) {
+      // Only remove script if we created it and UnicornStudio isn't initialized
+      // (don't remove if it's being used by other pages)
+      if (embedScript && document.head.contains(embedScript) && !window.UnicornStudio?.isInitialized) {
         document.head.removeChild(embedScript);
       }
-      if (style && document.head.contains(style)) {
-        document.head.removeChild(style);
-      }
+      // Don't remove the style - it's shared across pages and has a data attribute to prevent duplicates
     };
   }, []);
 
