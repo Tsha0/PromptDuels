@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from http import HTTPStatus
+from pathlib import Path
+from uuid import uuid4
 
+import requests
 from flask import Blueprint, jsonify, request
 
 from .events import emit_lobby_event
 from .services import (
     ConflictError,
+    ExternalServiceError,
     NotFoundError,
     ValidationError,
     ai_service,
@@ -37,6 +41,11 @@ def handle_conflict(error: ConflictError):
 @api_bp.errorhandler(ValidationError)
 def handle_validation(error: ValidationError):
     return jsonify({"error": str(error)}), HTTPStatus.BAD_REQUEST
+
+
+@api_bp.errorhandler(ExternalServiceError)
+def handle_external_service(error: ExternalServiceError):
+    return jsonify({"error": str(error)}), HTTPStatus.SERVICE_UNAVAILABLE
 
 
 @api_bp.route("/health", methods=["GET"])
@@ -149,8 +158,21 @@ def game_detail(game_id: str):
 @api_bp.route("/game/<game_id>/prompt", methods=["POST"])
 def submit_prompt(game_id: str):
     data = _payload()
-    game = ai_service.submit_prompt(game_id, data.get("player_name"), data.get("prompt"))
-    status_code = HTTPStatus.OK if game.status != "processing" else HTTPStatus.ACCEPTED
+    game, canonical_player, sections = ai_service.submit_prompt(
+        game_id, data.get("player_name"), data.get("prompt")
+    )
+    
+    # Check if both players have outputs, and if so, score the game
+    if len(game.outputs) >= len(game.players):
+        try:
+            game = ai_service.score_game(game.id)
+            status_code = HTTPStatus.OK
+        except ValueError:
+            # Not all outputs ready yet, return current state
+            status_code = HTTPStatus.ACCEPTED
+    else:
+        status_code = HTTPStatus.ACCEPTED
+    
     return jsonify({"game": game.to_dict(), "status": game.status}), status_code
 
 
@@ -173,17 +195,95 @@ def complete_game(game_id: str):
 @api_bp.route("/ai/generate", methods=["POST"])
 def ai_generate():
     data = _payload()
-    game = ai_service.submit_prompt(data.get("game_id"), data.get("player_name"), data.get("prompt"))
-    status_code = HTTPStatus.OK if game.status == "completed" else HTTPStatus.ACCEPTED
+    game, canonical_player, sections = ai_service.submit_prompt(
+        data.get("game_id"), data.get("player_name"), data.get("prompt")
+    )
+    
+    # Check if both players have outputs, and if so, score the game
+    if len(game.outputs) >= len(game.players):
+        try:
+            game = ai_service.score_game(game.id)
+            status_code = HTTPStatus.OK
+        except ValueError:
+            # Not all outputs ready yet, return current state
+            status_code = HTTPStatus.ACCEPTED
+    else:
+        status_code = HTTPStatus.ACCEPTED
+    
     response = {"game": game.to_dict(), "status": game.status}
     if game.status != "completed":
-        response["message"] = "Awaiting second prompt before processing."
+        response["message"] = "Awaiting second output before scoring."
     return jsonify(response), status_code
 
 
-@api_bp.route("/ai/internal/resolve", methods=["POST"])
-def ai_resolve():
+@api_bp.route("/ai/submit", methods=["POST"])
+def ai_submit():
+    """Submit a player's final image submission for scoring."""
     data = _payload()
-    game = ai_service.process_game(data.get("game_id"))
-    return jsonify({"game": game.to_dict()})
+    game_id = data.get("game_id")
+    player_name = data.get("player_name")
+    image_url = data.get("image_url") or data.get("image")  # Support both field names
+    
+    if not image_url:
+        return jsonify({"error": "image_url or image is required."}), HTTPStatus.BAD_REQUEST
+    
+    if not game_id:
+        return jsonify({"error": "game_id is required."}), HTTPStatus.BAD_REQUEST
+    
+    if not player_name:
+        return jsonify({"error": "player_name is required."}), HTTPStatus.BAD_REQUEST
+    
+    # Create submissions directory if it doesn't exist
+    submissions_dir = Path("submissions")
+    submissions_dir.mkdir(exist_ok=True)
+    
+    # Download and save image
+    try:
+        # Generate unique filename
+        file_ext = Path(image_url).suffix or ".png"
+        if not file_ext.startswith("."):
+            file_ext = f".{file_ext}"
+        filename = f"{game_id}_{player_name}_{uuid4().hex[:8]}{file_ext}"
+        file_path = submissions_dir / filename
+        
+        # Download image from URL
+        response = requests.get(image_url, timeout=30)
+        response.raise_for_status()
+        
+        # Save to local file
+        with open(file_path, 'wb') as f:
+            f.write(response.content)
+        
+        local_path = str(file_path.absolute())
+        
+    except Exception as exc:
+        return jsonify({"error": f"Failed to download/save image: {str(exc)}"}), HTTPStatus.BAD_REQUEST
+    
+    # Record the submission
+    try:
+        game, canonical_player = game_service.record_submission(game_id, player_name, local_path)
+    except NotFoundError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.NOT_FOUND
+    except ValidationError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.BAD_REQUEST
+    
+    # Check if both players have submitted, and if so, score the game
+    if len(game.submissions) >= len(game.players):
+        try:
+            game = ai_service.score_submissions(game.id)
+            status_code = HTTPStatus.OK
+        except ValueError as e:
+            # Not all submissions ready yet, return current state
+            status_code = HTTPStatus.ACCEPTED
+        except ExternalServiceError as e:
+            return jsonify({"error": str(e)}), HTTPStatus.SERVICE_UNAVAILABLE
+    else:
+        status_code = HTTPStatus.ACCEPTED
+    
+    response = {"game": game.to_dict(), "status": game.status}
+    if game.status != "completed":
+        response["message"] = "Awaiting second submission before scoring."
+    return jsonify(response), status_code
+
+
 
