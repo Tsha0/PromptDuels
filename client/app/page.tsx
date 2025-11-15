@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { MeshGradient } from "@paper-design/shaders-react"
 import { HeroSection } from "@/components/hero-section"
 import { HowItWorks } from "@/components/how-it-works"
 import { MockPreview } from "@/components/mock-preview"
@@ -20,11 +21,15 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-zinc-950 to-purple-950/20">
-      {/* Subtle animated gradient overlay */}
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-900/20 via-transparent to-transparent pointer-events-none" />
+    <div className="min-h-screen bg-black relative overflow-hidden">
+      {/* Background Paper Shaders */}
+      <MeshGradient
+        className="w-full h-full fixed inset-0"
+        colors={["#000000", "#1a1a1a", "#333333", "#4a148c"]}
+        speed={0.8}
+      />
       
-      <main className="relative flex flex-col items-center justify-center min-h-screen px-4 py-12 md:py-16 lg:py-20">
+      <main className="relative flex flex-col items-center justify-center min-h-screen px-4 py-12 md:py-16 lg:py-20 z-10">
         <div className="w-full max-w-7xl mx-auto space-y-8 md:space-y-12 lg:space-y-16">
           {/* Hero Section */}
           <div className="flex flex-col lg:flex-row gap-8 lg:gap-12 items-center lg:items-start">
