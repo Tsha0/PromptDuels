@@ -58,7 +58,7 @@ export default function WaitingPage() {
           setStatus("matched");
           // Redirect to game page with game ID
           setTimeout(() => {
-            router.push(`/game/${data.game.game_id}?player=${encodeURIComponent(playerName)}`);
+            router.push(`/game/${data.game.id}?player=${encodeURIComponent(playerName)}`);
           }, 1000);
         } else if (data.status === "queued") {
           setStatus("queued");
@@ -97,7 +97,7 @@ export default function WaitingPage() {
             if (pollInterval) clearInterval(pollInterval);
             // Redirect to game page with game ID
             setTimeout(() => {
-              router.push(`/game/${data.game.game_id}?player=${encodeURIComponent(playerName)}`);
+              router.push(`/game/${data.game.id}?player=${encodeURIComponent(playerName)}`);
             }, 1000);
           } else if (data.status === "queued") {
             setPosition(data.position || 1);
