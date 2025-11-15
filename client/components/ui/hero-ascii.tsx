@@ -1,62 +1,257 @@
 'use client';
 import Link from "next/link";
 import { useEffect, useState } from 'react';
-import { Info } from 'lucide-react';
+import { Info, Zap } from 'lucide-react';
 import { Dialog, DialogContent, DialogTrigger, DialogTitle } from '@/components/ui/dialog';
 import { MockPreview } from '@/components/mock-preview';
+
+// Extend Window interface for UnicornStudio
+declare global {
+  interface Window {
+    UnicornStudio?: {
+      isInitialized: boolean;
+      init?: () => void;
+    };
+  }
+}
+
+// Typing Test Popover Component
+function TypingTestPopover() {
+  const testSentences = [
+    "The quick brown fox jumps over the lazy dog",
+    "Pack my box with five dozen liquor jugs",
+    "How vexingly quick daft zebras jump",
+    "The five boxing wizards jump quickly"
+  ];
+  
+  const [sentence, setSentence] = useState(testSentences[0]);
+  const [input, setInput] = useState("");
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [wpm, setWpm] = useState(0);
+  const [accuracy, setAccuracy] = useState(100);
+  const [isComplete, setIsComplete] = useState(false);
+  const [finalWpm, setFinalWpm] = useState(0);
+  const [finalAccuracy, setFinalAccuracy] = useState(100);
+
+  const resetTest = () => {
+    setSentence(testSentences[Math.floor(Math.random() * testSentences.length)]);
+    setInput("");
+    setStartTime(null);
+    setWpm(0);
+    setAccuracy(100);
+    setIsComplete(false);
+    setFinalWpm(0);
+    setFinalAccuracy(100);
+  };
+
+  const finishTest = () => {
+    if (input.trim().length > 0 && startTime) {
+      setIsComplete(true);
+      setFinalWpm(wpm);
+      setFinalAccuracy(accuracy);
+    }
+  };
+
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isComplete) return;
+    
+    const value = e.target.value;
+    
+    if (!startTime) {
+      setStartTime(Date.now());
+    }
+
+    setInput(value);
+
+    // Calculate accuracy
+    let correct = 0;
+    for (let i = 0; i < value.length; i++) {
+      if (value[i] === sentence[i]) {
+        correct++;
+      }
+    }
+    const currentAccuracy = value.length > 0 ? Math.round((correct / value.length) * 100) : 100;
+    setAccuracy(currentAccuracy);
+
+    // Calculate WPM
+    if (startTime) {
+      const timeElapsed = (Date.now() - startTime) / 1000 / 60; // in minutes
+      const wordsTyped = value.trim().split(' ').length;
+      const currentWpm = timeElapsed > 0 ? Math.round(wordsTyped / timeElapsed) : 0;
+      setWpm(currentWpm);
+    }
+
+    // Check if complete (typed entire sentence)
+    if (value === sentence) {
+      setIsComplete(true);
+      setFinalWpm(wpm);
+      setFinalAccuracy(currentAccuracy);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !isComplete) {
+      finishTest();
+    }
+  };
+
+  return (
+    <div className="w-[400px] bg-black/20 backdrop-blur-md border border-white/20 text-white shadow-2xl">
+      <div className="p-5">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-b border-white/20 pb-3">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4" />
+              <h3 className="font-mono text-sm font-bold tracking-widest">TYPING WARMUP</h3>
+            </div>
+            <button 
+              onClick={resetTest}
+              className="text-[10px] font-mono text-white/60 hover:text-white hover:bg-white/10 transition-all px-3 py-1.5 border border-white/30 hover:border-white/60 relative group"
+            >
+              <span className="absolute -top-px -left-px w-1.5 h-1.5 border-t border-l border-white opacity-0 group-hover:opacity-100 transition-opacity"></span>
+              <span className="absolute -bottom-px -right-px w-1.5 h-1.5 border-b border-r border-white opacity-0 group-hover:opacity-100 transition-opacity"></span>
+              NEW
+            </button>
+          </div>
+
+          {!isComplete ? (
+            <>
+              <div className="flex gap-6 text-xs font-mono bg-white/5 p-3 border border-white/10">
+                <div className="flex flex-col items-center flex-1">
+                  <span className="text-white/50 text-[10px] mb-1">WPM</span>
+                  <span className="text-2xl font-bold text-white tabular-nums">{wpm}</span>
+                </div>
+                <div className="w-px bg-white/20"></div>
+                <div className="flex flex-col items-center flex-1">
+                  <span className="text-white/50 text-[10px] mb-1">ACCURACY</span>
+                  <span className="text-2xl font-bold text-white tabular-nums">{accuracy}%</span>
+                </div>
+              </div>
+
+              <div className="bg-white/5 p-4 border border-white/20 font-mono text-sm leading-relaxed">
+                {sentence.split('').map((char, i) => {
+                  let color = 'text-white/40';
+                  if (i < input.length) {
+                    color = input[i] === char ? 'text-green-400' : 'text-red-400';
+                  } else if (i === input.length) {
+                    color = 'text-white/60 bg-white/20';
+                  }
+                  return (
+                    <span key={i} className={color}>
+                      {char}
+                    </span>
+                  );
+                })}
+              </div>
+
+              <input
+                type="text"
+                value={input}
+                onChange={handleInput}
+                onKeyDown={handleKeyDown}
+                placeholder="Start typing here..."
+                className="w-full px-4 py-3 bg-white/5 border border-white/20 text-white font-mono text-sm placeholder:text-white/30 focus:outline-none focus:border-white/60 focus:bg-white/10 transition-all"
+                autoComplete="off"
+              />
+
+              <div className="text-center text-[10px] font-mono text-white/40">
+                Press <kbd className="px-1.5 py-0.5 bg-white/10 border border-white/30 rounded">ENTER</kbd> to finish
+              </div>
+            </>
+          ) : (
+            <div className="space-y-4">
+              <div className="text-center py-4">
+                <div className="text-green-400 text-sm font-mono mb-3">✓ TEST COMPLETE</div>
+                <div className="flex gap-6 justify-center">
+                  <div className="flex flex-col items-center">
+                    <span className="text-white/50 text-xs font-mono mb-1">FINAL WPM</span>
+                    <span className="text-4xl font-bold text-white tabular-nums">{finalWpm}</span>
+                  </div>
+                  <div className="w-px bg-white/20"></div>
+                  <div className="flex flex-col items-center">
+                    <span className="text-white/50 text-xs font-mono mb-1">ACCURACY</span>
+                    <span className="text-4xl font-bold text-white tabular-nums">{finalAccuracy}%</span>
+                  </div>
+                </div>
+              </div>
+              <div className="text-center text-xs font-mono text-white/60 border-t border-white/20 pt-4">
+                Click <span className="text-white">NEW</span> to try again
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    const embedScript = document.createElement('script');
-    embedScript.type = 'text/javascript';
-    embedScript.textContent = `
-      !function(){
-        if(!window.UnicornStudio){
-          window.UnicornStudio={isInitialized:!1};
-          var i=document.createElement("script");
-          i.src="https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v1.4.33/dist/unicornStudio.umd.js";
-          i.onload=function(){
-            window.UnicornStudio.isInitialized||(UnicornStudio.init(),window.UnicornStudio.isInitialized=!0)
-          };
-          (document.head || document.body).appendChild(i)
-        }
-      }();
-    `;
-    document.head.appendChild(embedScript);
+    let embedScript: HTMLScriptElement | null = null;
+    let style: HTMLStyleElement | null = null;
+
+    const initUnicornStudio = () => {
+      embedScript = document.createElement('script');
+      embedScript.type = 'text/javascript';
+      embedScript.textContent = `
+        !function(){
+          if(!window.UnicornStudio){
+            window.UnicornStudio={isInitialized:!1};
+            var i=document.createElement("script");
+            i.src="https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v1.4.33/dist/unicornStudio.umd.js";
+            i.onload=function(){
+              window.UnicornStudio.isInitialized||(UnicornStudio.init(),window.UnicornStudio.isInitialized=!0);
+              window.dispatchEvent(new Event('unicornstudio-loaded'));
+            };
+            (document.head || document.body).appendChild(i)
+          } else if(window.UnicornStudio.isInitialized) {
+            window.dispatchEvent(new Event('unicornstudio-loaded'));
+          }
+        }();
+      `;
+      document.head.appendChild(embedScript);
+    };
+
+    initUnicornStudio();
 
     // Add CSS to hide branding elements and crop canvas
-    const style = document.createElement('style');
-    style.textContent = `
-      [data-us-project] {
-        position: relative !important;
-        overflow: hidden !important;
-      }
-      
-      [data-us-project] canvas {
-        clip-path: inset(0 0 10% 0) !important;
-      }
-      
-      [data-us-project] * {
-        pointer-events: none !important;
-      }
-      [data-us-project] a[href*="unicorn"],
-      [data-us-project] button[title*="unicorn"],
-      [data-us-project] div[title*="Made with"],
-      [data-us-project] .unicorn-brand,
-      [data-us-project] [class*="brand"],
-      [data-us-project] [class*="credit"],
-      [data-us-project] [class*="watermark"] {
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-        position: absolute !important;
-        left: -9999px !important;
-        top: -9999px !important;
-      }
-    `;
-    document.head.appendChild(style);
+    // Only add if it doesn't already exist
+    const existingStyle = document.querySelector('style[data-unicorn-studio-style]');
+    if (!existingStyle) {
+      style = document.createElement('style');
+      style.setAttribute('data-unicorn-studio-style', 'true');
+      style.textContent = `
+        [data-us-project] {
+          position: relative !important;
+          overflow: hidden !important;
+        }
+        
+        [data-us-project] canvas {
+          clip-path: inset(0 0 10% 0) !important;
+        }
+        
+        [data-us-project] * {
+          pointer-events: none !important;
+        }
+        [data-us-project] a[href*="unicorn"],
+        [data-us-project] button[title*="unicorn"],
+        [data-us-project] div[title*="Made with"],
+        [data-us-project] .unicorn-brand,
+        [data-us-project] [class*="brand"],
+        [data-us-project] [class*="credit"],
+        [data-us-project] [class*="watermark"] {
+          display: none !important;
+          visibility: hidden !important;
+          opacity: 0 !important;
+          position: absolute !important;
+          left: -9999px !important;
+          top: -9999px !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
 
     // Function to aggressively hide branding
     const hideBranding = () => {
@@ -82,16 +277,48 @@ export default function Home() {
     setTimeout(hideBranding, 3000);
     setTimeout(hideBranding, 5000);
 
-    // Wait for everything to load before showing content
-    const loadTimeout = setTimeout(() => {
-      setIsLoaded(true);
+    // Wait for UnicornStudio to load and the project to initialize
+    let unicornLoaded = false;
+    let minTimeElapsed = false;
+
+    const checkAndShow = () => {
+      if (unicornLoaded && minTimeElapsed) {
+        setIsLoaded(true);
+      }
+    };
+
+    const handleUnicornLoad = () => {
+      // Give UnicornStudio a moment to render the project
+      setTimeout(() => {
+        unicornLoaded = true;
+        checkAndShow();
+      }, 500);
+    };
+
+    window.addEventListener('unicornstudio-loaded', handleUnicornLoad);
+
+    // Also ensure minimum loading time for smooth experience
+    const minTimeout = setTimeout(() => {
+      minTimeElapsed = true;
+      checkAndShow();
     }, 800);
+
+    // Fallback: show content after max wait time even if UnicornStudio hasn't loaded
+    const maxTimeout = setTimeout(() => {
+      setIsLoaded(true);
+    }, 3000);
 
     return () => {
       clearInterval(interval);
-      clearTimeout(loadTimeout);
-      document.head.removeChild(embedScript);
-      document.head.removeChild(style);
+      clearTimeout(minTimeout);
+      clearTimeout(maxTimeout);
+      window.removeEventListener('unicornstudio-loaded', handleUnicornLoad);
+      // Only remove script if we created it and UnicornStudio isn't initialized
+      // (don't remove if it's being used by other pages)
+      if (embedScript && document.head.contains(embedScript) && !window.UnicornStudio?.isInitialized) {
+        document.head.removeChild(embedScript);
+      }
+      // Don't remove the style - it's shared across pages and has a data attribute to prevent duplicates
     };
   }, []);
 
@@ -154,6 +381,34 @@ export default function Home() {
         className="absolute right-0 w-8 h-8 lg:w-12 lg:h-12 border-b-2 border-r-2 border-white/30 z-20 transition-opacity duration-700" 
         style={{ bottom: '5vh', opacity: isLoaded ? 1 : 0 }}
       ></div>
+
+      {/* 
+        WARM UP POPOVER - MANUAL POSITIONING GUIDE
+        ==========================================
+        To adjust the position, modify these values:
+        
+        Horizontal (left-right):
+        - right-[15%] = 15% from right edge (increase % to move left, decrease to move right)
+        - You can also use: right-[100px], right-[20vw], etc.
+        - Or switch to: left-[60%], left-[500px], etc.
+        
+        Vertical (up-down):
+        - top-1/2 = middle of screen (you can use: top-[40%], top-[200px], etc.)
+        - -translate-y-1/2 centers it vertically (adjust to -translate-y-[40%] to fine-tune)
+        - Or use bottom-[20%] instead of top
+        
+        Examples:
+        - Move lower: change top-1/2 to top-[60%]
+        - Move higher: change top-1/2 to top-[40%]  
+        - Move more right: change right-[15%] to right-[8%]
+        - Move more left: change right-[15%] to right-[25%]
+      */}
+      <div 
+        className="hidden lg:flex absolute right-[15%] top-1/2 transform -translate-y-1/2 z-30 transition-opacity duration-700"
+        style={{ opacity: isLoaded ? 1 : 0 }}
+      >
+        <TypingTestPopover />
+      </div>
 
       <div 
         className="relative z-10 flex min-h-screen items-center pt-16 lg:pt-0 transition-opacity duration-700" 
