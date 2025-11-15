@@ -6,6 +6,16 @@ import { TypingAnimation } from "@/components/ui/typing-animation";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
+// Extend Window interface for UnicornStudio
+declare global {
+  interface Window {
+    UnicornStudio?: {
+      isInitialized: boolean;
+      init?: () => void;
+    };
+  }
+}
+
 export default function WaitingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -106,26 +116,39 @@ export default function WaitingPage() {
     };
   }, [router, searchParams, playerName]);
 
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [dots, setDots] = useState("");
+
   useEffect(() => {
-    const embedScript = document.createElement("script");
-    embedScript.type = "text/javascript";
-    embedScript.textContent = `
-      !function(){
-        if(!window.UnicornStudio){
-          window.UnicornStudio={isInitialized:!1};
-          var i=document.createElement("script");
-          i.src="https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v1.4.33/dist/unicornStudio.umd.js";
-          i.onload=function(){
-            window.UnicornStudio.isInitialized||(UnicornStudio.init(),window.UnicornStudio.isInitialized=!0)
-          };
-          (document.head || document.body).appendChild(i)
-        }
-      }();
-    `;
-    document.head.appendChild(embedScript);
+    let embedScript: HTMLScriptElement | null = null;
+    let style: HTMLStyleElement | null = null;
+
+    const initUnicornStudio = () => {
+      embedScript = document.createElement("script");
+      embedScript.type = "text/javascript";
+      embedScript.textContent = `
+        !function(){
+          if(!window.UnicornStudio){
+            window.UnicornStudio={isInitialized:!1};
+            var i=document.createElement("script");
+            i.src="https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v1.4.33/dist/unicornStudio.umd.js";
+            i.onload=function(){
+              window.UnicornStudio.isInitialized||(UnicornStudio.init(),window.UnicornStudio.isInitialized=!0);
+              window.dispatchEvent(new Event('unicornstudio-loaded'));
+            };
+            (document.head || document.body).appendChild(i)
+          } else if(window.UnicornStudio.isInitialized) {
+            window.dispatchEvent(new Event('unicornstudio-loaded'));
+          }
+        }();
+      `;
+      document.head.appendChild(embedScript);
+    };
+
+    initUnicornStudio();
 
     // Add CSS to hide branding elements and crop canvas
-    const style = document.createElement("style");
+    style = document.createElement("style");
     style.textContent = `
       [data-us-project] {
         position: relative !important;
@@ -176,17 +199,70 @@ export default function WaitingPage() {
     setTimeout(hideBranding, 3000);
     setTimeout(hideBranding, 5000);
 
+    // Wait for UnicornStudio to load and the project to initialize
+    let unicornLoaded = false;
+    let minTimeElapsed = false;
+
+    const checkAndShow = () => {
+      if (unicornLoaded && minTimeElapsed) {
+        setIsLoaded(true);
+      }
+    };
+
+    const handleUnicornLoad = () => {
+      // Give UnicornStudio a moment to render the project
+      setTimeout(() => {
+        unicornLoaded = true;
+        checkAndShow();
+      }, 500);
+    };
+
+    window.addEventListener('unicornstudio-loaded', handleUnicornLoad);
+
+    // Also ensure minimum loading time for smooth experience
+    const minTimeout = setTimeout(() => {
+      minTimeElapsed = true;
+      checkAndShow();
+    }, 1500);
+
+    // Fallback: show content after max wait time even if UnicornStudio hasn't loaded
+    const maxTimeout = setTimeout(() => {
+      setIsLoaded(true);
+    }, 3000);
+
     return () => {
       clearInterval(interval);
-      document.head.removeChild(embedScript);
-      document.head.removeChild(style);
+      clearTimeout(minTimeout);
+      clearTimeout(maxTimeout);
+      window.removeEventListener('unicornstudio-loaded', handleUnicornLoad);
+      if (embedScript && document.head.contains(embedScript)) {
+        document.head.removeChild(embedScript);
+      }
+      if (style && document.head.contains(style)) {
+        document.head.removeChild(style);
+      }
     };
+  }, []);
+
+  // Animated dots effect for searching
+  useEffect(() => {
+    const dotsInterval = setInterval(() => {
+      setDots((prev) => {
+        if (prev === "...") return "";
+        return prev + ".";
+      });
+    }, 500);
+
+    return () => clearInterval(dotsInterval);
   }, []);
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-black">
       {/* Unicorn Studio background - desktop */}
-      <div className="absolute inset-0 w-full h-full hidden lg:block">
+      <div 
+        className="absolute inset-0 w-full h-full hidden lg:block transition-opacity duration-700"
+        style={{ opacity: isLoaded ? 1 : 0 }}
+      >
         <div
           data-us-project="sruhpQe3j1VOgVQHtJZf"
           style={{ width: "100%", height: "100%", minHeight: "100vh" }}
@@ -194,7 +270,10 @@ export default function WaitingPage() {
       </div>
 
       {/* Mobile stars background */}
-      <div className="absolute inset-0 w-full h-full lg:hidden stars-bg" />
+      <div 
+        className="absolute inset-0 w-full h-full lg:hidden stars-bg transition-opacity duration-700"
+        style={{ opacity: isLoaded ? 1 : 0 }}
+      />
 
       {/* Foreground content */}
       <div className="relative z-10 min-h-screen flex items-center justify-center">
