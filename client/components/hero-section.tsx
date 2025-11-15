@@ -8,10 +8,9 @@ import { ShaderPlane } from "./ui/background-paper-shaders"
 
 interface HeroSectionProps {
   onFindGame: () => void
-  onHowItWorks: () => void
 }
 
-export function HeroSection({ onFindGame, onHowItWorks }: HeroSectionProps) {
+export function HeroSection({ onFindGame }: HeroSectionProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -40,12 +39,12 @@ export function HeroSection({ onFindGame, onHowItWorks }: HeroSectionProps) {
                 </h1>
             </motion.div>
 
-            {/* CTA Buttons */}
+            {/* CTA Button */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4, duration: 0.5 }}
-              className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4"
+              className="flex justify-center items-center pt-4"
             >
               <motion.div
                 whileHover={{ scale: 1.05 }}
@@ -58,21 +57,6 @@ export function HeroSection({ onFindGame, onHowItWorks }: HeroSectionProps) {
                   className="bg-gradient-to-r from-gray-700 to-gray-600 hover:from-gray-600 hover:to-gray-500 text-white font-semibold px-8 py-6 text-lg rounded-full transition-all duration-300"
                 >
                   Find Game
-                </Button>
-              </motion.div>
-
-              <motion.div
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                transition={{ type: "spring", stiffness: 400, damping: 17 }}
-              >
-                <Button
-                  onClick={onHowItWorks}
-                  size="lg"
-                  variant="ghost"
-                  className="text-gray-300 hover:text-white hover:bg-white/5 font-medium px-8 py-6 text-lg rounded-full transition-all duration-300"
-                >
-                  How it works
                 </Button>
               </motion.div>
             </motion.div>
