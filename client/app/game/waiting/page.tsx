@@ -12,16 +12,21 @@ export default function WaitingPage() {
   const [status, setStatus] = useState<"connecting" | "queued" | "matched" | "error">("connecting");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [position, setPosition] = useState<number>(0);
+  
+  // Generate player name once - stable across re-renders
+  const [playerName] = useState(() => 
+    searchParams.get("player") || `Player_${Math.floor(Math.random() * 10000)}`
+  );
 
   useEffect(() => {
-    // Get player name from URL params or generate a random one
-    const playerName = searchParams.get("player") || `Player_${Math.floor(Math.random() * 10000)}`;
-
+    console.log('🔵 useEffect running for player:', playerName);
+    
     let pollInterval: NodeJS.Timeout | null = null;
     let isActive = true;
 
     const joinMatchmaking = async () => {
       try {
+        console.log('🔵 Joining matchmaking as:', playerName);
         const response = await fetch(`${API_BASE_URL}/matchmaking/join`, {
           method: "POST",
           headers: {
@@ -35,6 +40,7 @@ export default function WaitingPage() {
         }
 
         const data = await response.json();
+        console.log('🔵 Matchmaking response:', data);
 
         if (!isActive) return;
 
@@ -98,7 +104,7 @@ export default function WaitingPage() {
       isActive = false;
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [router, searchParams]);
+  }, [router, searchParams, playerName]);
 
   useEffect(() => {
     const embedScript = document.createElement("script");
