@@ -363,7 +363,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center gap-4 group">
               <div className="font-mono text-xl font-bold tracking-widest italic transform -skew-x-12">
-                CODEJAM25
+                CODEJAM15
               </div>
               <ChevronRight className="w-4 h-4 opacity-60" />
               <span className="text-sm font-mono text-white/60 group-hover:text-white transition-colors">
