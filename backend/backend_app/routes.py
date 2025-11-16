@@ -164,20 +164,17 @@ def submit_prompt(game_id: str):
         game_id, data.get("player_name"), data.get("prompt")
     )
     
-    # Check if both players have outputs, and if so, score the game based on code
-    if len(game.outputs) >= len(game.players):
-        try:
-            game = ai_service.score_code_outputs(game.id)
-            status_code = HTTPStatus.OK
-        except ValueError:
-            # Not all outputs ready yet, return current state
-            status_code = HTTPStatus.ACCEPTED
-        except ExternalServiceError as e:
-            return jsonify({"error": str(e)}), HTTPStatus.SERVICE_UNAVAILABLE
-    else:
-        status_code = HTTPStatus.ACCEPTED
+    # Code generated successfully - no scoring yet
+    # Scoring happens in /ai/submit after both players submit screenshots
+    status_code = HTTPStatus.ACCEPTED
     
-    return jsonify({"game": game.to_dict(), "status": game.status}), status_code
+    response = {
+        "game": game.to_dict(),
+        "status": game.status,
+        "message": "Code generated successfully. Please submit your screenshot for scoring."
+    }
+    
+    return jsonify(response), status_code
 
 
 @api_bp.route("/game/<game_id>/complete", methods=["POST"])
@@ -210,6 +207,23 @@ def get_game_results(game_id: str):
     
     # Get player data
     player1, player2 = game.players[0], game.players[1]
+    
+    # Helper to get image data URL from MongoDB submission ID
+    def get_image_data(submission_id: str) -> str:
+        """Fetch image data URL from MongoDB submission document."""
+        if not submission_id:
+            return ""
+        try:
+            from .extensions import db
+            from bson import ObjectId
+            
+            submission = db.submissions.find_one({"_id": ObjectId(submission_id)})
+            if submission:
+                return submission.get("image_data", "")
+            return ""
+        except Exception as e:
+            print(f"Error fetching submission {submission_id}: {e}")
+            return ""
     
     # Format category scores for results page
     def format_categories(player: str) -> list:
@@ -247,6 +261,12 @@ def get_game_results(game_id: str):
         """Format feedback into dict for frontend."""
         return game.feedback.get(player, {})
     
+    # Get image data URLs from MongoDB submissions
+    player1_submission_id = game.submissions.get(player1, "")
+    player2_submission_id = game.submissions.get(player2, "")
+    player1_image = get_image_data(player1_submission_id)
+    player2_image = get_image_data(player2_submission_id)
+    
     # Build response
     response = {
         "gameId": game.id,
@@ -259,7 +279,7 @@ def get_game_results(game_id: str):
                 "css": "",
                 "js": ""
             }),
-            "output": game.submissions.get(player1, ""),
+            "output": player1_image,
             "score": round(game.scores.get(player1, 0), 1),
             "categories": format_categories(player1),
             "feedback": format_feedback(player1),
@@ -272,7 +292,7 @@ def get_game_results(game_id: str):
                 "css": "",
                 "js": ""
             }),
-            "output": game.submissions.get(player2, ""),
+            "output": player2_image,
             "score": round(game.scores.get(player2, 0), 1),
             "categories": format_categories(player2),
             "feedback": format_feedback(player2),

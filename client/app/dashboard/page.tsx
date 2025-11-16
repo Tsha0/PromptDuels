@@ -1,7 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -9,6 +8,8 @@ import {
   ChevronRight,
   User,
   Clock,
+  Settings,
+  LogOut,
   Loader2
 } from "lucide-react"
 import {
@@ -23,6 +24,8 @@ import {
   Bar,
   Legend,
 } from "recharts"
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
 
 type RankTierName =
@@ -126,66 +129,221 @@ export function updateRating(
   return Math.max(1, Math.min(100, Math.round(normalized)))
 }
 
+function calculateMonthlyActivity(games: GameData[]) {
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  const now = new Date()
+  const monthlyData: { [key: string]: number } = {}
 
+  // Initialize last 12 months
+  for (let i = 11; i >= 0; i--) {
+    const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const monthKey = monthNames[date.getMonth()]
+    monthlyData[monthKey] = 0
+  }
 
-// Mock user data - will be fetched from MongoDB
-const mockUser = {
-  name: "CodeWarrior",
-  email: "warrior@example.com",
-  rating: 87, 
-  stats: {
-    DuelsStarted: 2612,
-    DuelsCompleted: 787,
-    timeTyping: "03:49:01", // hh:mm:ss
-    avgScoreChangePerDuel: 5.8, // arbitrary unit (e.g. wpm / score pts)
-  },
-  // Duels per month in last 12 months
-  monthlyActivity: [
-    { month: "Dec", Duels: 12 },
-    { month: "Jan", Duels: 20 },
-    { month: "Feb", Duels: 18 },
-    { month: "Mar", Duels: 25 },
-    { month: "Apr", Duels: 30 },
-    { month: "May", Duels: 34 },
-    { month: "Jun", Duels: 27 },
-    { month: "Jul", Duels: 22 },
-    { month: "Aug", Duels: 29 },
-    { month: "Sep", Duels: 24 },
-    { month: "Oct", Duels: 31 },
-    { month: "Nov", Duels: 26 },
-  ],
-  // performance over Duels (score vs Duel index)
-  performance: Array.from({ length: 25 }).map((_, i) => ({
+  // Count games per month
+  games.forEach((game) => {
+    if (game.completedAt) {
+      const gameDate = new Date(game.completedAt)
+      const monthKey = monthNames[gameDate.getMonth()]
+      if (monthlyData.hasOwnProperty(monthKey)) {
+        monthlyData[monthKey]++
+      }
+    }
+  })
+
+  return Object.keys(monthlyData).map((month) => ({
+    month,
+    Duels: monthlyData[month],
+  }))
+}
+
+function calculatePerformanceTrend(games: GameData[]) {
+  // Take last 25 games and calculate a score based on win rate over time
+  const recentGames = games.slice(0, Math.min(25, games.length))
+  
+  if (recentGames.length === 0) {
+    return Array.from({ length: 25 }).map((_, i) => ({
+      Duel: i + 1,
+      score: 50,
+    }))
+  }
+
+  return recentGames.reverse().map((game, i) => {
+    const baseScore = 50
+    const winBonus = game.result === "win" ? 15 : -10
+    const progressiveBonus = i * 1.5 // Simulate improvement over time
+    return {
     Duel: i + 1,
-    score: 80 + Math.round(Math.sin(i / 3) * 10) + i * 0.5, // fake but looks “real”
-  })),
-  games: [
-    { id: "1", opponent: "VibeKing",   opponentRating: 78, result: "win",  date: "2 hours ago", duration: "12:34" },
-    { id: "2", opponent: "CodeNinja",  opponentRating: 82, result: "win",  date: "5 hours ago", duration: "15:22" },
-    { id: "3", opponent: "HackerPro",  opponentRating: 90, result: "loss", date: "1 day ago",   duration: "18:45" },
-    { id: "4", opponent: "DevMaster",  opponentRating: 69, result: "win",  date: "1 day ago",   duration: "11:20" },
-    { id: "5", opponent: "ByteBlaster",opponentRating: 55, result: "win",  date: "2 days ago",  duration: "14:10" },
-    { id: "6", opponent: "TechWizard", opponentRating: 93, result: "loss", date: "3 days ago",  duration: "16:30" },
-    { id: "7", opponent: "CodeMaster", opponentRating: 61, result: "win",  date: "3 days ago",  duration: "10:15" },
-    { id: "8", opponent: "DevNinja",   opponentRating: 72, result: "win",  date: "4 days ago",  duration: "13:45" },
-  ],
+      score: Math.max(0, Math.min(100, baseScore + winBonus + progressiveBonus + (Math.random() * 10 - 5))),
+    }
+  })
+}
+
+
+
+interface UserData {
+  id: string
+  name: string
+  email: string
+  username: string
+  avatar?: string
+}
+
+interface GameData {
+  id: string
+  opponent: string
+  result: "win" | "loss"
+  duration?: number
+  completedAt?: string
+}
+
+interface StatsData {
+  wins: number
+  losses: number
+  total: number
+  winRate: number
 }
 
 export default function DashboardPage() {
-  const { stats, monthlyActivity, performance } = mockUser as any
-  const rankTier = getRankTierFromRating(mockUser.rating)
+  const [user, setUser] = useState<UserData | null>(null)
+  const [games, setGames] = useState<GameData[]>([])
+  const [stats, setStats] = useState<StatsData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        const token = localStorage.getItem("token")
+        
+        if (!token) {
+          window.location.href = "/auth"
+          return
+        }
+
+        // Fetch dashboard data
+        const dashboardResponse = await fetch(`${API_URL}/api/dashboard`, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+          },
+        })
+
+        if (!dashboardResponse.ok) {
+          throw new Error("Failed to fetch dashboard data")
+        }
+
+        const dashboardData = await dashboardResponse.json()
+        setUser(dashboardData.user)
+        setGames(dashboardData.games || [])
   
-  // Calculate winning percentage
-  const totalGames = mockUser.games.length
-  const wins = mockUser.games.filter((game: any) => game.result === "win").length
-  const winningPercentage = totalGames > 0 ? Math.round((wins / totalGames) * 100) : 0
+        // Fetch stats
+        const statsResponse = await fetch(`${API_URL}/api/user/${dashboardData.user.id}/stats`, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+          },
+        })
+
+        if (statsResponse.ok) {
+          const statsData = await statsResponse.json()
+          setStats(statsData)
+        }
+
+        setLoading(false)
+      } catch (err) {
+        console.error("Error fetching dashboard:", err)
+        setError(err instanceof Error ? err.message : "Failed to load dashboard")
+        setLoading(false)
+      }
+    }
+
+    fetchDashboardData()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-white" />
+          <p className="text-white/60 font-mono">Loading dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !user) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <Card className="bg-white/5 border-white/10 max-w-md">
+          <CardHeader>
+            <CardTitle className="text-white">Error</CardTitle>
+            <CardDescription>{error || "Failed to load user data"}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => window.location.href = "/auth"}>
+              Back to Login
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Calculate derived data
+  const totalGames = stats?.total || 0
+  const winningPercentage = stats?.winRate || 0
+  
+  // Calculate rating based on win rate (scale 1-100)
+  const rating = Math.min(100, Math.max(1, Math.round(50 + (winningPercentage - 50) * 0.8)))
+  const rankTier = getRankTierFromRating(rating)
   
   // Calculate time prompting: duels completed * 30 seconds
-  const totalSeconds = stats.DuelsCompleted * 30
+  const totalSeconds = totalGames * 30
   const hours = Math.floor(totalSeconds / 3600)
   const minutes = Math.floor((totalSeconds % 3600) / 60)
   const seconds = totalSeconds % 60
   const timePrompting = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+
+  // Calculate monthly activity from games
+  const monthlyActivity = calculateMonthlyActivity(games)
+  
+  // Calculate performance trend
+  const performance = calculatePerformanceTrend(games)
+  
+  // Format games for display
+  const formattedGames = games.map((game) => {
+    const completedDate = game.completedAt ? new Date(game.completedAt) : null
+    const now = new Date()
+    const diffMs = completedDate ? now.getTime() - completedDate.getTime() : 0
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+    
+    let dateStr = "Unknown"
+    if (completedDate) {
+      if (diffHours < 1) {
+        dateStr = "Just now"
+      } else if (diffHours < 24) {
+        dateStr = `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+      } else if (diffDays === 1) {
+        dateStr = "1 day ago"
+      } else {
+        dateStr = `${diffDays} days ago`
+      }
+    }
+    
+    const durationStr = game.duration 
+      ? `${Math.floor(game.duration / 60)}:${String(game.duration % 60).padStart(2, '0')}`
+      : "N/A"
+    
+    return {
+      id: game.id,
+      opponent: game.opponent,
+      opponentRating: Math.floor(50 + Math.random() * 40), // Mock rating for now
+      result: game.result,
+      date: dateStr,
+      duration: durationStr,
+    }
+  })
 
   return (
     <div
@@ -210,18 +368,19 @@ export default function DashboardPage() {
             </Link>
 
             <div className="flex items-center gap-4">
-              <Button 
-                onClick={() => {
-                  // Clear old game ID before starting new game
-                  if (typeof window !== 'undefined') {
-                    localStorage.removeItem('current_game_id');
-                  }
-                  router.push(`/game/waiting?player=${encodeURIComponent(dashboardData?.user?.username || 'Player')}`);
-                }}
-                className="bg-white text-black hover:bg-white/90 font-mono"
-              >
-                FIND GAME
-              </Button>
+              <Link href={`/game/waiting?player=${encodeURIComponent(user.username)}`}>
+                <Button 
+                  onClick={() => {
+                    // Clear old game ID before starting new game
+                    if (typeof window !== 'undefined') {
+                      localStorage.removeItem('current_game_id');
+                    }
+                  }}
+                  className="bg-white text-black hover:bg-white/90 font-mono"
+                >
+                  FIND GAME
+                </Button>
+              </Link>
               <Button variant="ghost" size="icon" className="text-white/60 hover:text-white hover:bg-white/10">
                 <Settings className="w-5 h-5" />
               </Button>
@@ -229,7 +388,13 @@ export default function DashboardPage() {
                 variant="ghost" 
                 size="icon" 
                 className="text-white/60 hover:text-white hover:bg-white/10"
-                onClick={handleLogout}
+                onClick={() => {
+                  // Handle logout - navigate to auth page
+                  if (typeof window !== 'undefined') {
+                    localStorage.clear();
+                    window.location.href = '/auth';
+                  }
+                }}
               >
                 <LogOut className="w-5 h-5" />
               </Button>
@@ -243,14 +408,14 @@ export default function DashboardPage() {
       {/* User Profile Section */}
 <div className="flex items-center justify-between gap-4 flex-wrap">
   <div className="flex items-center gap-4">
-    <div className="w-16 h-16 rounded-full border-2 border-cyan-400/60 flex items-center justify-center bg-gradient-to-br from-cyan-500/30 to-violet-500/30">
+    <div className="w-16 h-16 rounded-full border-2 border-cyan-400/60 flex items-center justify-center bg-[linear-gradient(to_bottom_right,rgba(6,182,212,0.3),rgba(139,92,246,0.3))]">
       <User className="w-8 h-8 text-cyan-200" />
     </div>
     <div>
       <h1 className="text-2xl lg:text-3xl font-bold font-mono tracking-wider mb-1">
-        {mockUser.name}
+        {user.username}
       </h1>
-      <p className="text-sm text-white/60 font-mono">{mockUser.email}</p>
+      <p className="text-sm text-white/60 font-mono">{user.email}</p>
 
       {/* Rank pill */}
       <div className="mt-2">
@@ -262,7 +427,7 @@ export default function DashboardPage() {
           ].join(" ")}
         >
           <span className="font-semibold">{rankTier.name.toUpperCase()}</span>
-          <span className="opacity-80">| Rating {mockUser.rating}/100</span>
+          <span className="opacity-80">| Rating {rating}/100</span>
           <span className="opacity-60">({rankTier.percentLabel})</span>
         </span>
       </div>
@@ -279,7 +444,7 @@ export default function DashboardPage() {
                 Duels completed
               </CardDescription>
               <CardTitle className="font-mono text-3xl font-bold text-emerald-300">
-                {stats.DuelsCompleted.toLocaleString()}
+                {totalGames.toLocaleString()}
               </CardTitle>
             </CardHeader>
             <CardContent className="text-xs font-mono text-white/50">
@@ -293,7 +458,7 @@ export default function DashboardPage() {
                 Winning percentage
               </CardDescription>
               <CardTitle className="font-mono text-3xl font-bold text-cyan-300">
-                {winningPercentage}%
+                {Math.round(winningPercentage)}%
               </CardTitle>
             </CardHeader>
             <CardContent className="text-xs font-mono text-white/50">
@@ -363,10 +528,9 @@ export default function DashboardPage() {
                   </CardDescription>
                 </div>
                 <div className="text-xs font-mono text-emerald-300">
-                  Avg change / Duel:{" "}
+                  Win Rate:{" "}
                   <span className="font-semibold">
-                    {stats.avgScoreChangePerDuel > 0 ? "+" : ""}
-                    {stats.avgScoreChangePerDuel.toFixed(2)}
+                    {Math.round(winningPercentage)}%
                   </span>
                 </div>
               </div>
@@ -428,7 +592,12 @@ export default function DashboardPage() {
           <CardContent>
 
   <div className="space-y-2">
-    {mockUser.games.map((game) => {
+    {formattedGames.length === 0 ? (
+      <div className="text-center py-8 text-white/60 font-mono">
+        No games played yet. Start your first duel!
+      </div>
+    ) : (
+      formattedGames.map((game) => {
       const opponentTier = getRankTierFromRating(game.opponentRating)
 
       return (
@@ -488,7 +657,8 @@ export default function DashboardPage() {
           </div>
         </div>
       )
-    })}
+      })
+    )}
   </div>
 </CardContent>
         </Card>

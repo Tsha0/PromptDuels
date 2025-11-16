@@ -42,10 +42,8 @@ export default function GameplayPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState<"preview" | "html" | "css" | "js">("preview");
   const [gameCompleted, setGameCompleted] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasAutoSubmitted, setHasAutoSubmitted] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);
-  const [gameCompleted, setGameCompleted] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Fetch game data
@@ -202,7 +200,6 @@ export default function GameplayPage() {
       return;
     }
 
-    setIsSubmitting(true);
     try {
       console.log('📸 Starting automatic preview capture and submission...');
       
@@ -298,8 +295,6 @@ export default function GameplayPage() {
         gameId,
         playerName
       });
-    } finally {
-      setIsSubmitting(false);
     }
   }, [gameId, playerName, generatedHTML]);
 
@@ -321,13 +316,7 @@ export default function GameplayPage() {
         
         if (game) {
           setGameData(game);
-          
-          // Check if game is completed and iframe is loaded
-          if (game.status === 'completed' && iframeLoaded && !hasAutoSubmitted) {
-            console.log('🎯 Game completed and iframe loaded - triggering automatic submission');
-            setHasAutoSubmitted(true);
-            await captureAndSubmitPreview();
-          }
+          // Game data updated for status monitoring
         }
       } catch (err) {
         console.error('Error polling game status:', err);
@@ -343,14 +332,14 @@ export default function GameplayPage() {
     return () => clearInterval(interval);
   }, [gameId, playerName, generatedHTML, iframeLoaded, hasAutoSubmitted, captureAndSubmitPreview]);
 
-  // Check if game is already completed when iframe loads
+  // Auto-submit screenshot when iframe loads with generated content
   useEffect(() => {
-    if (iframeLoaded && gameData?.status === 'completed' && generatedHTML && !hasAutoSubmitted) {
-      console.log('🎯 Iframe loaded and game already completed - triggering automatic submission');
+    if (iframeLoaded && generatedHTML && !hasAutoSubmitted && playerName) {
+      console.log('🎯 Iframe loaded with generated content - triggering automatic screenshot submission');
       setHasAutoSubmitted(true);
       captureAndSubmitPreview();
     }
-  }, [iframeLoaded, gameData?.status, generatedHTML, hasAutoSubmitted, captureAndSubmitPreview]);
+  }, [iframeLoaded, generatedHTML, hasAutoSubmitted, playerName, captureAndSubmitPreview]);
 
   // Poll for game completion and winner after submission
   useEffect(() => {
@@ -588,17 +577,47 @@ export default function GameplayPage() {
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               {gameCompleted ? (
-                <div className="text-white text-center space-y-6">
-                  <div className="font-mono space-y-3">
-                    <p className="text-4xl">🎉</p>
-                    <p className="text-3xl font-bold">Game Complete!</p>
-                    <p className="text-lg text-slate-300">Both players have submitted their prompts</p>
+                <div className="text-white text-center space-y-6 animate-fade-in">
+                  <div className="font-mono space-y-4">
+                    <p className="text-5xl animate-bounce">🎉</p>
+                    <p className="text-4xl font-bold bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
+                      Game Complete!
+                    </p>
+                    <p className="text-lg text-slate-300">
+                      AI scoring complete! Ready to view results.
+                    </p>
+                    {gameData?.winner && (
+                      <div className="mt-4 p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
+                        <p className="text-sm text-slate-400 mb-1">Winner</p>
+                        <p className="text-2xl font-bold text-green-400">
+                          {gameData.winner}
+                        </p>
+                        {gameData.scores && (
+                          <div className="mt-3 flex justify-center gap-8 text-sm">
+                            {Object.entries(gameData.scores).map(([player, score]) => (
+                              <div key={player} className="text-slate-300">
+                                <span className="font-mono">{player}:</span>{" "}
+                                <span className="font-bold">{score.toFixed(1)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <button
-                    onClick={() => router.push('/results')}
-                    className="px-8 py-4 font-mono text-lg bg-green-600 text-white hover:bg-green-700 transition-all transform hover:scale-105 shadow-2xl rounded-lg"
+                    onClick={() => {
+                      // Ensure game ID is stored for results page
+                      localStorage.setItem('current_game_id', gameId);
+                      router.push('/results');
+                    }}
+                    className="px-10 py-5 font-mono text-xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-700 hover:to-emerald-700 transition-all transform hover:scale-105 shadow-2xl rounded-xl border-2 border-green-400/50 hover:border-green-300/70"
                   >
-                    🏆 View Results
+                    <span className="flex items-center gap-3">
+                      <span>🏆</span>
+                      <span>View Detailed Results</span>
+                      <span>→</span>
+                    </span>
                   </button>
                 </div>
               ) : (
@@ -606,6 +625,9 @@ export default function GameplayPage() {
                 <div className="font-mono space-y-2 text-center">
                   <p className="text-2xl">⏳</p>
                     <p>Waiting for opponent to submit...</p>
+                    <p className="text-sm text-slate-400 mt-4">
+                      Your submission is complete. Game will be scored when both players finish.
+                    </p>
                   </div>
                 </div>
               )}

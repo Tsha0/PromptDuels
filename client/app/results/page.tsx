@@ -470,57 +470,6 @@ export default function ResultsPage() {
   const [loading, setLoading] = useState(true);
   const [openModal, setOpenModal] = useState<'player1' | 'player2' | null>(null);
 
-  const fetchGameResults = React.useCallback(async (gameId: string) => {
-    try {
-      setLoading(true);
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const response = await fetch(`${API_URL}/api/game/${gameId}/results`);
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch game results');
-      }
-      
-      const data = await response.json();
-      console.log('📊 Game results data received:', data);
-      
-      // Transform API data to match GameResult interface
-      const result: GameResult = {
-        player1: {
-          username: data.player1.username,
-          prompt: data.player1.prompt,
-          code: data.player1.code,
-          output: data.player1.output,
-          score: data.player1.score,
-          categories: data.player1.categories,
-          feedback: data.player1.feedback,
-        },
-        player2: {
-          username: data.player2.username,
-          prompt: data.player2.prompt,
-          code: data.player2.code,
-          output: data.player2.output,
-          score: data.player2.score,
-          categories: data.player2.categories,
-          feedback: data.player2.feedback,
-        },
-        targetImage: data.targetImage,
-        winner: data.winner,
-      };
-      
-      console.log('✅ Transformed game result:', result);
-      console.log('🎨 Player 1 code type:', typeof result.player1.code, result.player1.code);
-      console.log('🎨 Player 2 code type:', typeof result.player2.code, result.player2.code);
-      
-      setGameResult(result);
-      setLoading(false);
-    } catch (err) {
-      console.error('Error fetching game results:', err);
-      // Fall back to mock data on error
-      loadMockData();
-    }
-  }, []);
-
   const loadMockData = React.useCallback(() => {
     const mockResult: GameResult = {
       player1: {
@@ -714,18 +663,97 @@ export default function ResultsPage() {
     }, 500);
   }, []);
 
+  const fetchGameResults = React.useCallback(async (gameId: string) => {
+    try {
+      setLoading(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      console.log('🔍 Fetching game results for game_id:', gameId);
+      const response = await fetch(`${API_URL}/api/game/${gameId}/results`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('❌ API response not OK:', response.status, errorData);
+        throw new Error(errorData.error || 'Failed to fetch game results');
+      }
+      
+      const data = await response.json();
+      console.log('📊 Raw API response data:', JSON.stringify(data, null, 2));
+      console.log('📊 Player 1 from API:', {
+        username: data.player1?.username,
+        hasCategories: !!data.player1?.categories,
+        categoriesLength: data.player1?.categories?.length,
+        categories: data.player1?.categories,
+      });
+      console.log('📊 Player 2 from API:', {
+        username: data.player2?.username,
+        hasCategories: !!data.player2?.categories,
+        categoriesLength: data.player2?.categories?.length,
+        categories: data.player2?.categories,
+      });
+      
+      // Transform API data to match GameResult interface
+      const result: GameResult = {
+        player1: {
+          username: data.player1.username,
+          prompt: data.player1.prompt,
+          code: data.player1.code,
+          output: data.player1.output,
+          score: data.player1.score,
+          categories: data.player1.categories,
+          feedback: data.player1.feedback,
+        },
+        player2: {
+          username: data.player2.username,
+          prompt: data.player2.prompt,
+          code: data.player2.code,
+          output: data.player2.output,
+          score: data.player2.score,
+          categories: data.player2.categories,
+          feedback: data.player2.feedback,
+        },
+        targetImage: data.targetImage,
+        winner: data.winner,
+      };
+      
+      console.log('✅ Transformed game result:', result);
+      console.log('🎨 Player 1 after transform:', {
+        username: result.player1.username,
+        hasCategories: !!result.player1.categories,
+        categoriesLength: result.player1.categories?.length,
+        categories: result.player1.categories,
+      });
+      console.log('🎨 Player 2 after transform:', {
+        username: result.player2.username,
+        hasCategories: !!result.player2.categories,
+        categoriesLength: result.player2.categories?.length,
+        categories: result.player2.categories,
+      });
+      console.log('🎨 Player 1 code type:', typeof result.player1.code, result.player1.code);
+      console.log('🎨 Player 2 code type:', typeof result.player2.code, result.player2.code);
+      
+      setGameResult(result);
+      setLoading(false);
+    } catch (err) {
+      console.error('❌ Error fetching game results:', err);
+      // Fall back to mock data on error
+      loadMockData();
+    }
+  }, [loadMockData]);
+
   useEffect(() => {
     // Get game_id from localStorage (set during gameplay)
     const gameId = localStorage.getItem('current_game_id');
+    console.log('🎮 Retrieved game_id from localStorage:', gameId);
     
     if (!gameId) {
       // Fallback to mock data if no game_id
-      console.warn('No game_id found, using mock data');
+      console.warn('⚠️ No game_id found, using mock data');
       loadMockData();
       return;
     }
 
     // Fetch real game results
+    console.log('✅ Game ID found, fetching results...');
     fetchGameResults(gameId);
   }, [fetchGameResults, loadMockData]);
 
@@ -789,8 +817,26 @@ export default function ResultsPage() {
             player={gameResult.player1}
             isWinner={isPlayer1Winner}
             side="left"
-            categories={gameResult.player1.categories || player1Categories}
-            opponentCategories={gameResult.player2.categories || player2Categories}
+            categories={(() => {
+              const cats = gameResult.player1.categories || player1Categories;
+              console.log('🎯 Rendering Player 1 Card with categories:', {
+                username: gameResult.player1.username,
+                hasRealCategories: !!gameResult.player1.categories,
+                usingFallback: !gameResult.player1.categories,
+                categories: cats,
+              });
+              return cats;
+            })()}
+            opponentCategories={(() => {
+              const cats = gameResult.player2.categories || player2Categories;
+              console.log('🎯 Player 1 Card opponent categories:', {
+                opponentUsername: gameResult.player2.username,
+                hasRealCategories: !!gameResult.player2.categories,
+                usingFallback: !gameResult.player2.categories,
+                categories: cats,
+              });
+              return cats;
+            })()}
             onOpenModal={() => setOpenModal('player1')}
           />
 
@@ -799,8 +845,26 @@ export default function ResultsPage() {
             player={gameResult.player2}
             isWinner={!isPlayer1Winner}
             side="right"
-            categories={gameResult.player2.categories || player2Categories}
-            opponentCategories={gameResult.player1.categories || player1Categories}
+            categories={(() => {
+              const cats = gameResult.player2.categories || player2Categories;
+              console.log('🎯 Rendering Player 2 Card with categories:', {
+                username: gameResult.player2.username,
+                hasRealCategories: !!gameResult.player2.categories,
+                usingFallback: !gameResult.player2.categories,
+                categories: cats,
+              });
+              return cats;
+            })()}
+            opponentCategories={(() => {
+              const cats = gameResult.player1.categories || player1Categories;
+              console.log('🎯 Player 2 Card opponent categories:', {
+                opponentUsername: gameResult.player1.username,
+                hasRealCategories: !!gameResult.player1.categories,
+                usingFallback: !gameResult.player1.categories,
+                categories: cats,
+              });
+              return cats;
+            })()}
             onOpenModal={() => setOpenModal('player2')}
           />
           
