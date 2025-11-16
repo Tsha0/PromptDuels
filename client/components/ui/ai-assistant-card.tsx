@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { GradientButton } from "@/components/ui/gradient-button";
 
 interface ComponentProps {
   opponentID?: string;
@@ -379,12 +380,15 @@ export const Component = ({
                   </div>
                   {/* View Results button - appears when game is completed */}
                   {gameCompleted && onViewResults && (
-                    <button
-                      onClick={onViewResults}
-                      className="h-8 px-4 text-sm font-medium bg-gray-700/70 hover:bg-gray-800/80 border border-white/50 text-white shadow-lg hover:shadow-xl transition-all relative z-10"
-                    >
+                    // <button
+                    //   onClick={onViewResults}
+                    //   className="h-8 px-4 text-sm font-medium bg-gray-700/70 hover:bg-gray-800/80 border border-white/50 text-white shadow-lg hover:shadow-xl transition-all relative z-10"
+                    // >
+                    //   View Results
+                    // </button>
+                    <GradientButton onClick={onViewResults}>
                       View Results
-                    </button>
+                    </GradientButton>
                   )}
                 </div>
               </div>
