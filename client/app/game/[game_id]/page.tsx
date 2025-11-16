@@ -40,6 +40,7 @@ export default function GameplayPage() {
   const [generatedJS, setGeneratedJS] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState<"preview" | "html" | "css" | "js">("preview");
+  const [gameCompleted, setGameCompleted] = useState(false);
 
   // Fetch game data
   useEffect(() => {
@@ -55,6 +56,14 @@ export default function GameplayPage() {
         const data = await response.json();
         console.log('Game data received:', data);
         setGameData(data.game);
+        
+        // Check if game is completed and update state
+        if (data.game.status === 'completed' && !gameCompleted) {
+          console.log('🎉 Game completed (detected via polling)! Scores:', data.game.scores);
+          setGameCompleted(true);
+          localStorage.setItem('current_game_id', gameId);
+        }
+        
         setLoading(false);
       } catch (err) {
         console.error('Error fetching game:', err);
@@ -66,7 +75,34 @@ export default function GameplayPage() {
     if (gameId) {
       fetchGameData();
     }
-  }, [gameId]);
+  }, [gameId, gameCompleted]);
+
+  // Poll for game completion after user submits
+  useEffect(() => {
+    // Only poll if user has submitted and game is not yet completed
+    if (!isSubmitted || gameCompleted) return;
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/game/${gameId}`);
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        console.log('📡 Polling game status:', data.game.status);
+        
+        if (data.game.status === 'completed') {
+          console.log('🎉 Game completed (detected via polling)! Scores:', data.game.scores);
+          setGameCompleted(true);
+          localStorage.setItem('current_game_id', gameId);
+          setGameData(data.game); // Update game data with scores
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 3000); // Poll every 3 seconds
+    
+    return () => clearInterval(pollInterval);
+  }, [isSubmitted, gameCompleted, gameId]);
 
   // Calculate translation for animation
   useEffect(() => {
@@ -128,6 +164,13 @@ export default function GameplayPage() {
         }
       }
       
+      // Check if game is completed
+      if (data.game && data.game.status === 'completed') {
+        console.log('🎉 Game completed! Scores:', data.game.scores);
+        setGameCompleted(true);
+        // Store game ID for results page
+        localStorage.setItem('current_game_id', gameId);
+      }
       
       setIsGenerating(false);
     } catch (err) {
@@ -217,12 +260,13 @@ export default function GameplayPage() {
             </div>
           ) : generatedHTML ? (
             <div className="w-full h-full flex flex-col space-y-4 p-4">
-              {/* Header with tabs */}
+              {/* Header with tabs and View Results button */}
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div className="text-white text-lg font-mono shrink-0">
                   Your Generated Creation
                 </div>
-                <div className="flex gap-1 shrink-0">
+                <div className="flex gap-2 shrink-0">
+                  <div className="flex gap-1">
                   <button
                     onClick={() => setActiveTab("preview")}
                     className={`px-3 py-2 font-mono text-xs transition-colors ${
@@ -263,6 +307,16 @@ export default function GameplayPage() {
                   >
                     JS
                   </button>
+                  </div>
+                  {/* View Results button - appears when game is completed */}
+                  {gameCompleted && (
+                    <button
+                      onClick={() => router.push('/results')}
+                      className="px-4 py-2 font-mono text-sm bg-green-600 text-white hover:bg-green-700 transition-colors shadow-lg animate-pulse"
+                    >
+                      🏆 View Results
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -317,12 +371,28 @@ export default function GameplayPage() {
             </div>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
+              {gameCompleted ? (
+                <div className="text-white text-center space-y-6">
+                  <div className="font-mono space-y-3">
+                    <p className="text-4xl">🎉</p>
+                    <p className="text-3xl font-bold">Game Complete!</p>
+                    <p className="text-lg text-slate-300">Both players have submitted their prompts</p>
+                  </div>
+                  <button
+                    onClick={() => router.push('/results')}
+                    className="px-8 py-4 font-mono text-lg bg-green-600 text-white hover:bg-green-700 transition-all transform hover:scale-105 shadow-2xl rounded-lg"
+                  >
+                    🏆 View Results
+                  </button>
+                </div>
+              ) : (
               <div className="text-white text-lg">
                 <div className="font-mono space-y-2 text-center">
                   <p className="text-2xl">⏳</p>
-                  <p>Waiting for generation to complete...</p>
+                    <p>Waiting for opponent to submit...</p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>
